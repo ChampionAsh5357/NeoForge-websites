@@ -12,9 +12,12 @@ summary: |
 
 # Mitigating Vulnerabilities: Network Object Allocation
 
-NeoForge 26.1.2.44-beta and 21.1.229 fixed a potential exploit where a client could crash the server using a maliciously crafted network packet. Users can either upgrade to the latest NeoForge for 26.1.2 / 1.21.1, or install Drex's `CrashExploitFixer` ([CurseForge](https://www.curseforge.com/minecraft/mc-mods/crashexploitfixer) / [Modrinth](https://modrinth.com/mod/crashexploitfixer)) to mitigate this issue.
+NeoForge 26.1.2.44-beta and 21.1.229 fixed a potential exploit where a client could crash the server using a maliciously crafted network packet. Players and server owners can either do one of the following to mitigate the issue:
 
-For most users, that's enough information to not have to worry about the issue. But what does it mean to exploit a network packet? Does it mean mods are vulnerable?
+- Upgrade to the latest NeoForge for 26.1.2 / 1.21.1.
+- For older NeoForge and Minecraft versions, install Drex's `CrashExploitFixer` ([CurseForge](https://www.curseforge.com/minecraft/mc-mods/crashexploitfixer) / [Modrinth](https://modrinth.com/mod/crashexploitfixer)).
+
+For most, that's enough information to not have to worry about the issue. But what does it mean to exploit a network packet? Does it mean mods are vulnerable?
 
 Let's dive deeper to get a better understanding of how this exploit occurs and what can be done to mitigate it.
 
@@ -26,7 +29,11 @@ When we talk about network vulnerabilities, we are generally talking about explo
 
 One such sanitization process has to do with object allocation: where the game requests and reserves a block of memory to store an object. For most data types, this will generally be a relatively small number of bytes (e.g., an `int` is 4 bytes, while a reference is either 4 or 8 bytes depending on JVM settings). However, arrays provide a different story.
 
-When declaring an array, you have to specify an initial capacity that declares its size, whether that'd be directly through the `new` constructor, or by passing in a certain number of elements into the declaration. As such, the array will attempt to allocate the data type size times the capacity. For example, if we declared a `new Object[10]`, where each object reference is 4 bytes, then at least 4 * 10 = 40 bytes will be allocated by the array. That doesn't sound like a lot at first, but what if we instead near `Integer.MAX_VALUE` as the capacity? Then, the array will attempt to allocate around 4 * 2^31 = 8,589,934,592 bytes, or ~8GiB of data. As you can imagine, depending on the Minecraft server settings, you can easily cause an `OutOfMemoryException` to be thrown, either due to a lack of sufficient memory or the [JVM purposely crashing](https://github.com/openjdk/jdk/blob/22b46872d0d647c9ef9f4414b4685afa8313926d/src/java.base/share/classes/jdk/internal/util/ArraysSupport.java#L854).
+When declaring an array, you have to specify an initial capacity that declares its size, whether that'd be directly through the `new` constructor, or by passing in a certain number of elements into the declaration. As such, the array will attempt to allocate the data type size times the capacity. For example, if we declared a `new Object[10]`, where each object reference is 4 bytes, then at least 4 * 10 = 40 bytes will be allocated by the array. That doesn't sound like a lot at first, but what if we instead near `Integer.MAX_VALUE` as the capacity? Then, the array will attempt to allocate around 4 * 2^31 = 8,589,934,592 bytes, or ~8GiB of data. This vulnerability is known as [Memory Allocation with Excessive Size Value](https://cwe.mitre.org/data/definitions/789.html).
+
+As you can imagine, depending on the Minecraft server settings, this large amount of memory allocation can cause a denial-of-service, throw an `OutOfMemoryError`, or even kill the server itself.
+
+> Fun fact, depending on the JVM (e.g., HotSpot), setting the size of the array to a value greater than or equal to max array length (`ArraysSupport.SOFT_MAX_ARRAY_LENGTH` or 2,147,483,639) will [throw an `OutOfMemoryError("Requested array size exceeds VM limit")`](https://github.com/openjdk/jdk/blob/22b46872d0d647c9ef9f4414b4685afa8313926d/src/java.base/share/classes/jdk/internal/util/ArraysSupport.java#L854).
 
 ## The Exploit
 
