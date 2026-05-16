@@ -20,13 +20,13 @@ Let's dive deeper to get a better understanding of how this exploit occurs and w
 
 ## Understanding Network Vulnerabilities
 
-When we talk about network vulnerabilities, we are generally talking about exploiting serverbound requests in one form or another. This is because the client typically has to "trust" the server is not going to download something malicious, whereas the server can't assume every client that's connected is acting in good faith. As such, the server must validate and sanitize anything it receives from the client.
+When we talk about network vulnerabilities, we are generally talking about exploiting serverbound requests in one form or another. This is because the client typically has to "trust" the server as the authoritative party and that it is not going to operate maliciously, whereas the server can't assume every client that's connected is acting in good faith. As such, the server must validate and sanitize anything it receives from the client.
 
 ### Object Allocation
 
 One such sanitization process has to do with object allocation: where the game requests and reserves a block of memory to store an object. For most data types, this will generally be a relatively small number of bytes (e.g., an `int` is 4 bytes, while a reference is either 4 or 8 bytes depending on JVM settings). However, arrays provide a different story.
 
-When declaring an array, you have to specify an initial capacity that declares it size, whether that'd be directly through the `new` constructor, or by passing in a certain number of elements into the declaration. As such, the array will attempt to allocate the data type size times the capacity. For example, if we declared a `new Object[10]`, where each object reference is 4 bytes, then at least 4 * 10 = 40 bytes will be allocated by the array. That doesn't sound like a lot at first, but what if we instead use `Integer.MAX_VALUE` as the capacity? Then, the array will attempt to allocate 4 * 2^31 = 8,589,934,592 bytes, or ~8GiB of data. As you can imagine, depending on the Minecraft server settings, you can easily cause an `OutOfMemoryException` to be thrown.
+When declaring an array, you have to specify an initial capacity that declares its size, whether that'd be directly through the `new` constructor, or by passing in a certain number of elements into the declaration. As such, the array will attempt to allocate the data type size times the capacity. For example, if we declared a `new Object[10]`, where each object reference is 4 bytes, then at least 4 * 10 = 40 bytes will be allocated by the array. That doesn't sound like a lot at first, but what if we instead use `Integer.MAX_VALUE` as the capacity? Then, the array will attempt to allocate 4 * 2^31 = 8,589,934,592 bytes, or ~8GiB of data. As you can imagine, depending on the Minecraft server settings, you can easily cause an `OutOfMemoryException` to be thrown.
 
 ## The Exploit
 
@@ -48,7 +48,7 @@ Notice the issue? The `count` variable is provided by the client, meaning it lea
 
 ## The Mitigation Strategy
 
-If that's the case, wouldn't that mean sending any collection across the network is vulnerable to such an attack? Well, no. Let's take at another implementation provided by `StreamCodec`s:
+If that's the case, wouldn't that mean sending any collection across the network is vulnerable to such an attack? Well, no. Let's take a look at another implementation provided by `StreamCodec`s:
 
 ```java
 // From `ByteBufCodecs`
@@ -78,12 +78,12 @@ NeoForge used the same strategy that `ByteBufCodec`s does: limiting the initial 
 
 ## What does this mean for mods?
 
-For most mods, nothing changes. The mod loaders have mitigated the issue, so unless you are reimplementing `readCollection` or `readMap` yourself, a mod will not be vulnerable. However, this assumes that the data your packets are sending are properly sending only what's necessary to the server.
+For most mods, nothing changes. The mod loaders have mitigated the issue, so unless you are reimplementing `readCollection` or `readMap` yourself, a mod will not be vulnerable. However, this assumes that the data your packets contain is limited to only what's necessary and that the server is properly validating what it receives.
 
 If you ever looked at a vanilla serverbound packet (e.g., `ServerboundEditBookPacket`, `ServerboundChangeGameModePacket`), you can see that the amount of data sent in each is relatively sparse. The packet only provides enough information such that the server understands what the client's intention is, using the data stored on the server to fill in the rest of the gaps (e.g., `ServerboundEditBookPacket` sends the slot the stack is in, rather than the `ItemStack` itself). Additionally, many of the serverbound packets that make use of variable types define limits on how much data can be sent to the server in one packet.
 
 The only packet that steps away from this rule is `ServerboundSetCreativeModeSlotPacket`, which can be exploited depending on the `DataComponentType`s available on the `ItemStack`. Though in that case, an additional validation is performed to make sure the server player's `Abilities.instabuild` (e.g., in creative mode) is true before attempting to decode.
 
-With these points in mind, modded serverbound packets should attempt to replicate vanilla: send the smallest amount of data possible needed to perform the appropriate action on the server. And if you need to allocation any kind of collection or map of elements, set a maximum capacity.
+With these points in mind, modded serverbound packets should attempt to replicate vanilla: contain only the minimal information required to perform the appropriate action on the server. And if you need to allocate any kind of collection or map of elements, set a maximum capacity.
 
 Happy modding!
